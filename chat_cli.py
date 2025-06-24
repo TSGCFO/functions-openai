@@ -1,4 +1,9 @@
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Developer instructions and tool configuration from openai_response.py
 DEVELOPER_MESSAGE = {
@@ -74,7 +79,7 @@ TOOLS = [
 
 
 def main():
-    client = OpenAI()
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     messages = [DEVELOPER_MESSAGE]
     print("Type 'quit' to exit.\n")
     while True:
