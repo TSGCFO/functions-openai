@@ -1,6 +1,9 @@
 from openai import OpenAI
 import os
+import argparse
 from dotenv import load_dotenv
+from response_formatter import format_response
+from config import get_config, update_display_mode
 
 # Load environment variables from .env file
 load_dotenv()
@@ -78,25 +81,148 @@ TOOLS = [
 ]
 
 
+def parse_arguments():
+    """Parse command line arguments for display mode configuration."""
+    parser = argparse.ArgumentParser(
+        description="OpenAI Chat CLI with user-friendly response formatting",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Display Modes:
+  clean   - Show only assistant response with minimal formatting (default)
+  verbose - Include reasoning summary and usage statistics
+  debug   - Show all technical details and raw response data
+
+Interactive Mode:
+  When enabled, use keyboard shortcuts to switch modes:
+  'c' = clean mode    'v' = verbose mode    'd' = debug mode
+  'r' = show reasoning    space = expand/collapse sections
+        """
+    )
+    
+    parser.add_argument(
+        "--mode", "-m",
+        choices=["clean", "verbose", "debug"],
+        default=None,
+        help="Display mode for responses (overrides config file)"
+    )
+    
+    parser.add_argument(
+        "--no-colors",
+        action="store_true",
+        help="Disable colored output"
+    )
+    
+    parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help="Disable interactive keyboard shortcuts"
+    )
+    
+    parser.add_argument(
+        "--no-cost-tracking",
+        action="store_true",
+        help="Disable cost estimation display"
+    )
+    
+    return parser.parse_args()
+
+
+def apply_cli_overrides(args):
+    """Apply command line argument overrides to configuration."""
+    config = get_config()
+    
+    # Apply display mode override
+    if args.mode:
+        update_display_mode(args.mode)
+    
+    # Apply other overrides (would need config update methods)
+    if args.no_colors:
+        config.display.enable_colors = False
+    
+    if args.no_interactive:
+        config.display.enable_interactive = False
+        
+    if args.no_cost_tracking:
+        config.display.enable_cost_tracking = False
+
+
 def main():
+    """Main chat CLI function with enhanced response formatting."""
+    # Parse command line arguments
+    args = parse_arguments()
+    apply_cli_overrides(args)
+    
+    # Get current configuration
+    config = get_config()
+    display_mode = args.mode or config.display.default_mode
+    
+    # Initialize OpenAI client
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     messages = [DEVELOPER_MESSAGE]
-    print("Type 'quit' to exit.\n")
+    
+    # Welcome message with mode information
+    welcome_text = f"OpenAI Chat CLI - Response Mode: {display_mode.upper()}"
+    if config.display.enable_interactive:
+        welcome_text += " (Interactive shortcuts enabled)"
+    
+    print(welcome_text)
+    print("Type 'quit' or 'exit' to end the session.")
+    if config.display.enable_interactive:
+        print("Press 'c/v/d' to switch display modes during conversation.")
+    print("-" * 60)
+    print()
+    
+    # Main chat loop
     while True:
-        user_input = input("You: ")
-        if user_input.strip().lower() in {"quit", "exit"}:
+        try:
+            user_input = input("You: ")
+            
+            if user_input.strip().lower() in {"quit", "exit"}:
+                print("Goodbye!")
+                break
+            
+            if not user_input.strip():
+                continue
+                
+            # Add user message to conversation
+            messages.append({"role": "user", "content": user_input})
+            
+            # Get response from OpenAI
+            response = client.responses.create(
+                model="o3",
+                input=messages,
+                text={"format": {"type": "text"}},
+                reasoning={"effort": "medium", "summary": "auto"},
+                tools=TOOLS,
+                store=True,
+            )
+            
+            # Format and display the response using the new formatter
+            format_response(response, mode=display_mode)
+            
+            # Add assistant response to conversation history
+            # Extract the actual response text for conversation context
+            try:
+                if hasattr(response, 'text'):
+                    response_text = str(response.text)
+                elif hasattr(response, 'choices') and response.choices:
+                    response_text = response.choices[0].message.content
+                else:
+                    response_text = str(response)
+                
+                messages.append({"role": "assistant", "content": response_text})
+            except Exception as e:
+                # Fallback to string representation if extraction fails
+                messages.append({"role": "assistant", "content": str(response)})
+            
+            print()  # Add spacing between responses
+            
+        except KeyboardInterrupt:
+            print("\n\nSession interrupted. Goodbye!")
             break
-        messages.append({"role": "user", "content": user_input})
-        response = client.responses.create(
-            model="o3",
-            input=messages,
-            text={"format": {"type": "text"}},
-            reasoning={"effort": "medium", "summary": "auto"},
-            tools=TOOLS,
-            store=True,
-        )
-        print("Assistant:", response)
-        messages.append({"role": "assistant", "content": str(response)})
+        except Exception as e:
+            print(f"\nError occurred: {e}")
+            print("Please try again or type 'quit' to exit.\n")
 
 
 if __name__ == "__main__":
