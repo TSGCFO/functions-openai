@@ -201,12 +201,15 @@ def main():
             format_response(response, mode=display_mode)
             
             # Add assistant response to conversation history
-            # Extract the actual response text for conversation context
+            # Extract the actual response text for conversation context using the same extractor
+            from response_formatter import ContentExtractor
             try:
-                if hasattr(response, 'text'):
-                    response_text = str(response.text)
-                elif hasattr(response, 'choices') and response.choices:
-                    response_text = response.choices[0].message.content
+                extractor = ContentExtractor()
+                extracted = extractor.extract(response)
+                
+                # Use the extracted text if available, otherwise fall back to string representation
+                if extracted.text:
+                    response_text = extracted.text
                 else:
                     response_text = str(response)
                 
