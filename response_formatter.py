@@ -49,8 +49,24 @@ class ContentExtractor:
             
             # Handle different response types
             if hasattr(response, 'text'):
-                # Direct text response
-                extracted.text = str(response.text)
+                # OpenAI Responses API - text attribute contains nested object with content
+                text_value = response.text
+                if hasattr(text_value, 'content'):
+                    # Text attribute contains a nested object with content (Responses API)
+                    extracted.text = str(text_value.content)
+                elif isinstance(text_value, str):
+                    # Text attribute is a string
+                    extracted.text = text_value
+                else:
+                    # Text attribute is some other object - check common content properties
+                    content_attrs = ['text', 'value', 'data', 'body']
+                    for attr in content_attrs:
+                        if hasattr(text_value, attr):
+                            extracted.text = str(getattr(text_value, attr))
+                            break
+                    else:
+                        # Last resort: string conversion (may show config instead of content)
+                        extracted.text = str(text_value)
             elif hasattr(response, 'choices') and response.choices:
                 # Chat completion response
                 choice = response.choices[0]
