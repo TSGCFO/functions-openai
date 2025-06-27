@@ -1,0 +1,30 @@
+{
+  "display": {
+    "default_mode": "clean",
+    "enable_colors": true,
+    "enable_interactive": true,
+    "enable_cost_tracking": true,
+    "show_timestamps": false,
+    "show_model_info": false,
+    "max_content_length": 1000,
+    "truncate_long_content": true
+  },
+  "colors": {
+    "header": "cyan",
+    "success": "green",
+    "error": "red",
+    "warning": "yellow",
+    "technical": "bright_black",
+    "content": "white",
+    "reasoning": "blue",
+    "usage": "magenta"
+  },
+  "keyboard": {
+    "clean_mode": "c",
+    "verbose_mode": "v",
+    "debug_mode": "d",
+    "reasoning": "r",
+    "expand_collapse": "space",
+    "exit_interactive": "escape"
+  }
+}

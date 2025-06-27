@@ -47,12 +47,25 @@ class ContentExtractor:
             extracted.raw_response = response
             extracted.timestamp = time.time()
             
-            # Handle different response types
-            if hasattr(response, 'text'):
-                # OpenAI Responses API - text attribute contains nested object with content
+            # Handle O3 Responses API format first (has 'output' attribute)
+            if hasattr(response, 'output') and response.output:
+                # O3 Responses API - content is in output array
+                extracted.text = self._extract_text_from_output(response.output)
+                extracted.reasoning = self._extract_reasoning_from_output(response.output)
+            # Handle regular Chat Completions API format
+            elif hasattr(response, 'choices') and response.choices:
+                # Chat completion response
+                choice = response.choices[0]
+                if hasattr(choice, 'message'):
+                    extracted.text = choice.message.content
+                elif hasattr(choice, 'text'):
+                    extracted.text = choice.text
+            # Handle legacy response formats
+            elif hasattr(response, 'text'):
+                # OpenAI legacy API - text attribute may contain content
                 text_value = response.text
                 if hasattr(text_value, 'content'):
-                    # Text attribute contains a nested object with content (Responses API)
+                    # Text attribute contains a nested object with content
                     extracted.text = str(text_value.content)
                 elif isinstance(text_value, str):
                     # Text attribute is a string
@@ -65,15 +78,8 @@ class ContentExtractor:
                             extracted.text = str(getattr(text_value, attr))
                             break
                     else:
-                        # Last resort: string conversion (may show config instead of content)
-                        extracted.text = str(text_value)
-            elif hasattr(response, 'choices') and response.choices:
-                # Chat completion response
-                choice = response.choices[0]
-                if hasattr(choice, 'message'):
-                    extracted.text = choice.message.content
-                elif hasattr(choice, 'text'):
-                    extracted.text = choice.text
+                        # Last resort: try to extract from text object
+                        extracted.text = self._extract_text_from_object(text_value)
             elif hasattr(response, 'content'):
                 # Some response formats have direct content
                 extracted.text = str(response.content)
@@ -84,8 +90,9 @@ class ContentExtractor:
                 # Try to extract from response object attributes
                 extracted.text = self._extract_text_from_object(response)
             
-            # Extract reasoning if available
-            extracted.reasoning = self._extract_reasoning(response)
+            # Extract reasoning if not already extracted from output
+            if not extracted.reasoning:
+                extracted.reasoning = self._extract_reasoning(response)
             
             # Extract usage statistics
             extracted.usage = self._extract_usage(response)
@@ -105,6 +112,31 @@ class ContentExtractor:
                 raw_response=response,
                 timestamp=time.time()
             )
+    
+    def _extract_text_from_output(self, output: List[Any]) -> Optional[str]:
+        """Extract text content from O3 Responses API output array."""
+        for item in output:
+            # Look for message-type items
+            if hasattr(item, 'type') and item.type == 'message':
+                if hasattr(item, 'content') and item.content:
+                    # Look through content array for output_text items
+                    for content_item in item.content:
+                        if hasattr(content_item, 'type') and content_item.type == 'output_text':
+                            if hasattr(content_item, 'text'):
+                                return content_item.text
+        return None
+    
+    def _extract_reasoning_from_output(self, output: List[Any]) -> Optional[str]:
+        """Extract reasoning content from O3 Responses API output array."""
+        for item in output:
+            # Look for reasoning-type items
+            if hasattr(item, 'type') and item.type == 'reasoning':
+                if hasattr(item, 'summary') and item.summary:
+                    # Look through summary array for summary_text items
+                    for summary_item in item.summary:
+                        if hasattr(summary_item, 'text'):
+                            return summary_item.text
+        return None
     
     def _extract_text_from_object(self, response: Any) -> Optional[str]:
         """Try to extract text from various response object formats."""
